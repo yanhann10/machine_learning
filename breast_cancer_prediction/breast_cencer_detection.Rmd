@@ -1,0 +1,117 @@
+---
+title: "Breast cancer detection with Machine Learning"
+author: "Han Yan"
+output: html_document
+---
+
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr) # CSV file I/O
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(ggplot2) # Data visualization
+library(RColorBrewer)
+library(networkD3)
+library(d3heatmap)
+library(plotly)
+library(lubridate) # Datetime
+library(tidytext)
+library(devtools)
+library(formattable)
+library(corrplot)
+library(caret) # Machine Learning
+library(caretEnsemble)
+library(rattle)
+```
+
+## Load data
+
+```{r input, message=F, echo=F}
+data <- read_csv("~/git_repo/breast_cancer_prediction/data.csv")
+data$X33 <- NULL
+data$diagnosis=as.factor(data$diagnosis)
+```
+
+
+
+
+## Visualize the features
+
+```{r EDA }
+#high-dimension 4-at-a-time
+densityplot = function(data, i=3)  {
+  featurePlot(x = data[, i:(ifelse(i+3<ncol(data),i+3, ncol(data)))], 
+              y = data$diagnosis, 
+              plot = "density",
+              auto.key = list(columns = 2))
+}
+#i in seq(3, ncol(data),4)
+densityplot(data, 7)
+```
+
+```{r}
+#high-dimension 4-at-a-time
+pairsplot = function(data, i=3)  {
+  featurePlot(x = data[, i:(ifelse(i+3<ncol(data),i+3, ncol(data)))], 
+              y = data$diagnosis, 
+              plot = "pairs",
+              auto.key = list(columns = 2))
+}
+#i in seq(3, ncol(data),4)
+pairsplot(data, 3)
+```
+
+
+Some observations:
+
+ * There's collinearity among radius, perimeter and area.
+ * From density plot, Malign cells tend to have larger compactness, concavity, concavity point
+
+## Analysis
+
+```{r modelling}
+intrain=createDataPartition(y=data$diagnosis, p= 0.75, list=FALSE)
+training<-data[intrain,]
+testing<-data[-intrain,]
+test.x=testing%>%select(-diagnosis)
+test.y=testing$diagnosis
+```
+
+#check if there's variables with no variance
+
+```{r pre_process}
+nearZeroVar(training,saveMetrics=TRUE)
+```
+So no variable is lack variability.
+
+```{r model}
+m_ada <- ada(diagnosis ~ ., data = training, control = rpart::rpart.control(maxdepth = 30, 
+    cp = 0.01, minsplit = 20, xval = 10), iter = 30)
+addtest(m_ada,test.x,test.y)
+summary(m_ada)
+```
+
+With adaboost, we were able to achieve 98.1% accuracy.
+
+#Feature importance
+```{r}
+varplot(m_ada)
+```
+
+Mean size and compactness are found to be the most important features.
+
+
+```{r}
+# rf <- train(diagnosis ~ ., method="rf",data=training,,prox=TRUE)
+# confusionMatrix(test.y,predict(rf,testing))
+#why would it return same results as gbm
+```
+
+
+```{r}
+# gbm <- train(diagnosis ~ ., method="gbm",data=training,verbose=FALSE)
+# confusionMatrix(test.y,predict(gbm,testing))
+```
+

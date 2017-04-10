@@ -1,0 +1,131 @@
+---
+title: "titanic"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2) # Data visualization
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(reshape2)
+library(tidyr)
+library(formattable)
+library(RColorBrewer)
+library(lubridate)
+library(stringr)
+library(viridis)
+library(gridExtra)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo = FALSE)
+library(rattle)
+library(caret) #ML
+library(caretEnsemble)
+library(xgboost)
+library(dplyr)
+```
+
+```{r message=F, error=F}
+train <- read_csv("~/git_repo/Machine_learning/titanic/train.csv")
+test <- read_csv("~/git_repo/Machine_learning/titanic/test.csv")
+
+train <- train %>% select(-c(PassengerId,Ticket,Cabin, Name)) %>% mutate(Survived = factor(Survived), Pclass=factor(Pclass))
+test <- test %>% dplyr::select(-c(PassengerId,Ticket,Cabin, Name)) %>% mutate(Pclass=factor(Pclass))
+trainIndex <- createDataPartition(train$Survived, p = .7, list = FALSE)
+train_df <- train[trainIndex,]
+test_df <- train[-trainIndex,]
+```
+
+```{r}
+table(sapply(train,class))
+```
+```{r}
+library(GGally)
+ggpairs(train, aes(colour = Survived, alpha = 0.4))
+```
+
+
+
+```{r missingvalue}
+#how to impute blank for both training and testing?
+#train_df%>%summarise_each(funs(sum(is.na(.))))
+train[is.na(train$Age), "Age"] <- median(train$Age, na.rm=T)
+test[is.na(test$Age), "Age"] <- median(test$Age, na.rm=T)
+test[is.na(test$Fare), "Fare"] <- median(test$Fare, na.rm=T)
+train[is.na(train$Embarked), "Embarked"] <- "S"
+
+train_df <- train[trainIndex,]
+test_df <- train[-trainIndex,]
+
+train_df%>%summarise_each(funs(sum(is.na(.))))
+```
+
+```{r}
+set.seed(111)
+control <- trainControl(method="cv", number=10, verboseIter = TRUE)
+model_tree <- train(Survived ~.,
+                  method="rpart",
+                  train_df,
+                  metric = "Accuracy",
+                  trControl = control,
+                  preProcess = c("center", "scale"))
+model_rf <- train(Survived ~.,  
+                  method="ranger",
+                  train_df, 
+                  metric = "roc",
+                  tuneLength = 10,
+                  trControl = control,
+                  preProcess = c("center", "scale"))
+model_svc <- train(Survived ~.,  
+                  method="svmLinear",
+                  train_df, 
+                  metric = "roc",
+                  trControl = control,
+                  preProcess = c("center", "scale"))
+model_lda <- train(Survived ~.,  
+                  method="lda",
+                  train_df, 
+                  metric = "roc",
+                  tuneLength = 10,
+                  trControl = control,
+                  preProcess = c("center", "scale"))
+# model_xgboost <- train(Survived ~.,  
+#                   method="xgboost",
+#                   train_df, 
+#                   metric = "roc",
+#                   trControl = control,
+#                   preProcess = c("center", "scale"))
+#pred <- predict(my_model, test_df)
+#confusionMatrix(data=pred, test_df$Class)
+
+```
+```{r}
+# xgb <- xgboost(data = as.matrix(train_df), 
+#  label = train_df$Survived, 
+#  eta = 0.1,
+#  max_depth = 15, 
+#  nround=2, 
+#  objective = "binary:logistic")
+# )
+#Error in xgb.DMatrix(data, label = label, missing = missing) : [22:39:14] amalgamation/../dmlc-core/src/io/local_filesys.cc:66: LocalFileSystem.GetPathInfo 0 Error:No such file or directory
+```
+
+```{r}
+model_list <- list(rf=model_rf, svc=model_svc, lda=model_lda)
+resamples=resamples(model_list)
+summary(resamples)
+dotplot(resamples)
+```
+
+```{r}
+#use rf to predict
+pred <- predict(model_rf, test_df)
+confusionMatrix(pred, test_df$Survived)
+```
+
+```{r}
+submission <- predict(model_rf, test)
+test <- read_csv("~/git_repo/Machine_learning/titanic/test.csv")
+submission = data.frame(test$PassengerId, submission)
+colnames(submission) = c("PassengerId", "Survived")
+
+write.csv(submission, "titanic_submission", row.names = FALSE)
+```
+
