@@ -1,9 +1,9 @@
 ---
-title: "titanic"
+title: "machine learning with titanic dataset"
 output: html_document
 ---
 
-Here we will compare the performance of different machine learning algorithms on titanic dataset
+We will compare the performance of different machine learning algorithms on predicting titanic survival
 
 Sections to cover:
 
@@ -15,7 +15,7 @@ Sections to cover:
  * autoML
  
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE,warning = FALSE, error = FALSE, message=FALSE}
 library(readr) # CSV file I/O, e.g. the read_csv function
 library(reshape2)
 library(tidyr)
@@ -31,12 +31,12 @@ h2o.init()
 library(ggplot2) # Data visualization
 ```
 
-```{r message=F, error=F}
+```{r warning = FALSE, error = FALSE, message=FALSE}
 train <- read_csv("train.csv")
 test <- read_csv("test.csv")
 
 train <- train %>% 
-  select(-c(PassengerId,Ticket,Cabin, Name)) %>% 
+  dplyr::select(-c(PassengerId,Ticket,Cabin, Name)) %>% 
   mutate(Survived = factor(Survived), Pclass=factor(Pclass))
 
 test <- test %>% 
@@ -44,39 +44,49 @@ test <- test %>%
   mutate(Pclass=factor(Pclass))
 ```
 
-```{r}
-train_dmy <- dummyVars("~.", data=train, fullRank=T) #generate n-1 columns
-train_transform <- data.frame(predict(train_dmy, newdata = train))
 
+#Exploration
 
-```
-
-
-```{r}
+```{r warning = FALSE, error = FALSE, message=FALSE}
 library(GGally)
 ggpairs(train, aes(colour = Survived, alpha = 0.4))
 ```
 
+```{r}
+#NA in each col
+train%>%summarise_each(funs(sum(is.na(.))))
+```
 
-
-```{r missingvalue}
-#how to impute blank for both training and testing?
-#train_df%>%summarise_each(funs(sum(is.na(.))))
+#Imputation
+```{r imputation}
 train[is.na(train$Age), "Age"] <- median(train$Age, na.rm=T)
 test[is.na(test$Age), "Age"] <- median(test$Age, na.rm=T)
 test[is.na(test$Fare), "Fare"] <- median(test$Fare, na.rm=T)
 train[is.na(train$Embarked), "Embarked"] <- "S"
+```
+
+#One-hot encoding
+```{r one_hot_encoding}
+train_dmy <- dummyVars("~.", data=train, fullRank=T) #generate n-1 columns
+train_transform <- data.frame(predict(train_dmy, newdata = train))
 
 ```
+
+#Split training data
 ```{r train_test_split}
-trainIndex <- createDataPartition(train$Survived, p = .7, list = FALSE)
-train_df <- train[trainIndex,]
-validate_df <- train[-trainIndex,]
+trainIndex <- createDataPartition(train_transform$Survived, p = .7, list = FALSE)
+train_df <- train_transform[trainIndex,]
+validate_df <- train_transform[-trainIndex,]
 ```
 
-```{r results = 'hide'}
+#cross validation
+```{r}
 set.seed(111)
 control <- trainControl(method="cv", number=10, verboseIter = TRUE)
+```
+
+#modeling in caret
+```{r warning = FALSE, error = FALSE, message=FALSE}
 
 model_tree <- train(Survived ~.,
                   method="rpart",
@@ -131,84 +141,7 @@ model_nb <- train(Survived ~.,
                   preProcess = c("center", "scale"))
 ```
 
-
-
-```{r}
-# model_xgboost <- train(Survived ~.,  
-#                   method="xgboost",
-#                   train_df, 
-#                   metric = "roc",
-#                   trControl = control,
-#                   preProcess = c("center", "scale"))
-#pred <- predict(my_model, validate_df)
-#confusionMatrix(data=pred, validate_df$Class)
-
-
-
-# xgb <- xgboost(data = as.matrix(train_df), 
-#  label = train_df$Survived, 
-#  eta = 0.1,
-#  max_depth = 15, 
-#  nround=2, 
-#  objective = "binary:logistic")
-# )
-#Error in xgb.DMatrix(data, label = label, missing = missing) : [22:39:14] amalgamation/../dmlc-core/src/io/local_filesys.cc:66: LocalFileSystem.GetPathInfo 0 Error:No such file or directory
-```
-
-```{r}
-#neuralnet from caret only deal with regression, whereas nnet deal with classification
-
-#convert factor to numeric
-train$Survived=as.numeric(as.character(train$Survived))
-train$Pclass=as.numeric(as.character(train$Pclass))
-
-#fit nn model
-# model_nn <- neuralnet(Survived~Pclass+Age+SibSp+Parch+Fare, 
-#                       train, hidden=3, linear.output=F)
-#   
-# 
-# nn_predict <- neuralnet::compute(model_nn, 
-#                       test[c("Pclass", "Age", "SibSp", "Parch", "Fare")])$net.result[,1]
-
-
-# model_nnet <- train(Survived ~.,  
-#                   method="nnet",
-#                   train_df, 
-#                   linout=FALSE, trace = FALSE,
-#                   preProcess = c("center", "scale"))
-#   
-# nnet_predict <- predict(model_nnet, validate_df)
-
-#use one-hot encoding
-model_nnet <- train(as.factor(Survived) ~.,  
-                  method="nnet",
-                  train_transform, 
-                  linout=FALSE, trace = FALSE,
-                  preProcess = c("center", "scale"))
-  
-nnet_predict <- predict(model_nnet, test_transform)
-
-confusionmx <- table(Real.Class = validate_df$Survived, predicted=nnet_predict)
-error=1-sum(diag(confusionmx))*1.0/sum(confusionmx)
-error
-
-test$Pclass = as.factor(test$Pclass)
-test$Sex = as.factor(test$Sex)
-
-
-
-```
-```{r}
-test_partial = test[setdiff(colnames(validate_df),"Survived")]
-test_partial
-test_dmy <- dummyVars("~.", data=test_partial, fullRank=T) #generate n-1
-test_transform <- data.frame(predict(test_dmy, newdata = test_partial))
-
-nnet_outcome<- predict(model_nnet, test_partial)
-length(nnet_outcome)
-```
-
-
+#model comparison
 ```{r}
 model_list <- list(rf = model_rf, 
                    knn = model_knn,
@@ -222,13 +155,51 @@ dotplot(resamples)
 ```
 results show random foreast and SVM Radial worked the best among the used algorithms.
 
+
+#NeuralNet
+```{r}
+#neuralnet from caret only deal with regression, whereas nnet deal with classification
+
+#convert factor to numeric
+train$Survived=as.numeric(as.character(train$Survived))
+train$Pclass=as.numeric(as.character(train$Pclass))
+
+
+model_nnet <- train(as.factor(Survived.1) ~.,  
+                  method="nnet",
+                  train_df, 
+                  linout=FALSE, trace = FALSE,
+                  preProcess = c("center", "scale"))
+  
+validate_df$pred <- predict(model_nnet, validate_df)
+```
+
+```{r nnet_err}
+err <- mean(as.numeric(validate_df$pred ) != validate_df$Survived.1)
+err
+```
+
+```{r impute_test}
+test_partial = test[setdiff(colnames(validate_df),"Survived")]
+test_partial$Pclass = as.numeric(as.character(test_partial$Pclass))
+test_dmy <- dummyVars("~.", data=test_partial, fullRank=T) #generate n-1
+test_transform <- data.frame(predict(test_dmy, newdata = test_partial))
+
+```
+
+
+
 #autoML
-```{r auto}
+```{r auto, warning = FALSE, error = FALSE, message=FALSE}
 train_df = as.h2o(train_df)
 validate_df = as.h2o(validate_df) 
 
-x = c("Pclass","Sex","Age","SibSp","Parch","Fare")
-y="Survived"
+x = setdiff(colnames(train_df), "Survived.1")
+y="Survived.1"
+
+#autoML will metric error base on type of problem: regression or classification
+train_df[,y] <- as.factor(train_df[,y])
+validate_df[,y] <- as.factor(validate_df[,y])
 
 aml <- h2o.automl(x = x, 
                   y = y,
@@ -241,42 +212,54 @@ lb <- aml@leaderboard
 lb
 
 ```
-```{r autopredict}
-test <- as.h2o(test)
-h2o_pred <- h2o.predict(aml, test)
+```{r autopredict, warning = FALSE, error = FALSE, message=FALSE}
+test_h2o <- as.h2o(test_transform)
+h2o_pred <- h2o.predict(aml, test_h2o)
+#0.775
 ```
 Somehow autoML prediction didn't beat RF
 
 
 #xgboost
+
 ```{r}
-model_xgb <- xgb.cv(data = as.matrix(train_transform[,2:9]), 
-            label = train_transform$Survived,
+model_xgb <- xgboost(data = as.matrix(train_df[,2:9]), 
+            label = train_df$Survived,
             nrounds = 100,
-            nfold = 5,
             objective = "binary:logistic",
             eta = 0.3,
             max_depth = 6,
-            early_stopping_rounds = 10,
             verbose = 0    # silent
 )
 
-library(caret)
-test$pred <- xgboost::predict(model_xgb, as.matrix(test_partial))
+validate_df$pred <- predict(model_xgb, as.matrix(validate_df))
 #Error: 'predict' is not an exported object from 'namespace:xgboost'
 ```
 
-
-##Predict class
+```{r xgbfeatureimportance}
+importance <- xgb.importance(colnames(train_df[,2:9]), model = model_xgb)
+xgb.ggplot.importance(importance)
+```
+```{r xgbtree, fig.width=20}
+xgb.plot.tree(feature_names = colnames(train_df[,2:9]), model = model_xgb, n_first_tree = 2)
+```
 
 
 ```{r}
+err <- mean(as.numeric(validate_df$pred > 0.5) != validate_df$Survived.1)
+err
+```
+
+#Predict
+
+```{r}
 #submission <- predict(model_rf, test)
+pred=ifelse(test$pred>=0.5,1,0)
 test <- read_csv("test.csv")
-submission = data.frame(test$PassengerId, nnet_outcome)
+submission = data.frame(test$PassengerId, pred)
 colnames(submission) = c("PassengerId", "Survived")
 
-write.csv(submission, "titanic_submission6", row.names = FALSE)
+write.csv(submission, "titanic_submission7.csv", row.names = FALSE)
 ```
 
 
