@@ -48,5 +48,49 @@ d_tsne %>%
 
 ## FashionMNIST
 ```{r input_fashionmnist}
-train <- read_csv("~/git_repo/machine_learning/mnist/train.csv")
+fashion_mnist_train <- read_csv("~/git_repo/machine_learning/mnist/fashion-mnist_train.csv", 
+     col_names = FALSE)
 ```
+
+```{r}
+colnames(fashion_mnist_train)[1]<-'label'
+fashion_mnist_train$label<-as.factor(fashion_mnist_train$label)
+fashion_mnist_train=fashion_mnist_train%>%distinct
+start_time <- Sys.time()
+
+tsne_fashion_mnist <- Rtsne(fashion_mnist_train[,-1], dims = 2, perplexity=30, verbose=TRUE, max_iter = 400)
+
+Sys.time() - start_time
+```
+
+```{r plot2d}
+d_tsne <- data.frame(tsne_fashion_mnist$Y, Class = fashion_mnist_train$label)
+colnames(d_tsne) <- c("x", "y", "Class")
+d_tsne %>%
+  ggplot(aes(x, y, col=Class)) + geom_point(alpha=0.6) + 
+  ggtitle('t-sne on fashionMNIST') + my_theme()
+```
+
+
+```{r fashion_mnist_3d}
+tsne_fashion_mnist_3d <- Rtsne(fashion_mnist_train[,-1], dims = 3, perplexity=40, verbose=TRUE, max_iter = 500)
+
+Sys.time() - start_time
+```
+```
+
+```{r}
+d_tsne_3d <- data.frame(tsne_fashion_mnist_3d$Y, Class = fashion_mnist_train$label)
+colnames(d_tsne_3d) <- c("x", "y", "z", "Class")
+d_tsne_3d %>%
+  ggplot(aes(x, y,z, col=Class)) + geom_point(alpha=0.6) + 
+  ggtitle('t-sne on fashionMNIST') + my_theme()
+```
+
+```{r plotly}
+plot_ly(d_tsne_3d, x = ~x, y = ~y, z = ~z, 
+             color = ~Class,
+             marker = list(symbol = 'circle')) %>%
+       add_markers() 
+```
+
