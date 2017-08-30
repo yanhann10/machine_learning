@@ -1,0 +1,52 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(caret)
+library(xgboost)
+library(Rtsne)
+library(plotly)
+my_theme <- function(base_size = 12, base_family = "Helvetica"){
+    theme_minimal() +
+    theme(axis.title.y = element_blank(),axis.title.x = element_blank(),
+    plot.title = element_text(face="bold", size=16),
+    axis.text = element_text(face="bold"),
+    plot.background = element_rect(fill = 'ghostwhite',color='white'))
+}
+```
+
+## MNIST
+
+```{r input_mnist}
+train <- read_csv("~/git_repo/machine_learning/mnist/train.csv")
+```
+
+```{r tsne}
+
+train$label<-as.factor(train$label)
+
+start_time <- Sys.time()
+
+tsne <- Rtsne(train[,-1], dims = 2, perplexity=30, verbose=TRUE, max_iter = 500)
+
+Sys.time() - start_time
+```
+
+
+
+```{r plot_mnist}
+d_tsne <- data.frame(tsne$Y, Class = train$label)
+colnames(d_tsne) <- c("x", "y", "Class")
+d_tsne %>%
+  ggplot(aes(x, y, col=Class)) + geom_point(alpha=0.6) + 
+  ggtitle('t-sne on MNIST') + my_theme()
+
+```
+
+## FashionMNIST
+```{r input_fashionmnist}
+train <- read_csv("~/git_repo/machine_learning/mnist/train.csv")
+```
